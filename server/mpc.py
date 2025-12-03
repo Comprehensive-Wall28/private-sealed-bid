@@ -25,12 +25,6 @@ def mpc_compare(shares_a, shares_b, p):
        If d < p/2, then a >= b (d is positive).
        If d > p/2, then a < b (d is negative, represented as p - |d|).
     """
-    # 1. Compute difference shares locally
-    # We assume shares_a and shares_b are lists of shares [s1, s2, s3]
-    # But this function might be called by the "system" orchestrating the servers,
-    # or we simulate the servers exchanging their difference shares.
-    
-    # Let's simulate the distributed process:
     # Each server i computes diff_i = a_i - b_i
     diff_shares = []
     for sa, sb in zip(shares_a, shares_b):

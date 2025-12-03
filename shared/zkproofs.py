@@ -8,10 +8,6 @@ def hash_points(points):
     for p in points:
         # Check if p is an ecdsa Point (has x and y methods or attributes)
         if hasattr(p, 'x') and hasattr(p, 'y'):
-            # ecdsa points usually have x() and y() methods returning integers
-            # or they might be attributes. Let's try to access them safely.
-            # In ecdsa library, they are usually methods or properties.
-            # We'll convert to string.
             try:
                 x_val = p.x()
                 y_val = p.y()
@@ -40,7 +36,6 @@ def prove_bit(b, r, C):
         c1 = random.randint(0, N-1)
         
         # A1 = z1*H - c1*(C - G)
-        # In ecdsa, we avoid negative scalars if possible, use (N-x)%N
         # -c1 * (C - G) = (N - c1) * (C + (N-1)*G)
         neg_c1 = (N - c1) % N
         neg_G = (N - 1) * G
@@ -134,12 +129,6 @@ def generate_range_proof(bid, randomness, max_bid_bits=16):
     delta_r = (randomness - total_r) % N
     
     # Compute C_sum
-    # Initialize with point at infinity? ecdsa doesn't expose it easily as a starting point for sum.
-    # We can start with the first term or handle 0 carefully.
-    # Or just sum them up.
-    # ecdsa points don't support `sum()` with start=0 easily if 0 is integer.
-    # We'll iterate.
-    
     C_sum = None
     for i, C_bit in enumerate(bit_commitments):
         term = (1 << i) * C_bit
