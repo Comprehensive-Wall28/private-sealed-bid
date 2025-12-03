@@ -1,7 +1,6 @@
 from server.mpc import find_max_bid
 from shared.zkproofs import verify_range_proof
-from shared.commitments import verify_commitment
-from shared.ecc import N
+from shared.commitments import verify_commitment, N
 
 # Large prime for secret sharing (must be larger than max bid sum, but here max bid is 50000)
 # We can use a standard large prime or just N from secp256k1 if we treat shares as scalars on the curve,

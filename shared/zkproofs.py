@@ -1,5 +1,4 @@
-from shared.ecc import G, H, N, Point
-from shared.commitments import commit_bid
+from shared.commitments import commit_bid, G, H, N
 import hashlib
 import random
 
@@ -7,9 +6,21 @@ def hash_points(points):
     """Helper to hash a list of points/values to a scalar."""
     hasher = hashlib.sha256()
     for p in points:
-        if isinstance(p, Point):
-            hasher.update(str(p.x).encode())
-            hasher.update(str(p.y).encode())
+        # Check if p is an ecdsa Point (has x and y methods or attributes)
+        if hasattr(p, 'x') and hasattr(p, 'y'):
+            # ecdsa points usually have x() and y() methods returning integers
+            # or they might be attributes. Let's try to access them safely.
+            # In ecdsa library, they are usually methods or properties.
+            # We'll convert to string.
+            try:
+                x_val = p.x()
+                y_val = p.y()
+            except TypeError:
+                x_val = p.x
+                y_val = p.y
+                
+            hasher.update(str(x_val).encode())
+            hasher.update(str(y_val).encode())
         else:
             hasher.update(str(p).encode())
     return int(hasher.hexdigest(), 16) % N
@@ -17,26 +28,7 @@ def hash_points(points):
 def prove_bit(b, r, C):
     """
     Prove that C is a commitment to 0 or 1.
-    b: the bit (0 or 1)
-    r: randomness used in C
-    C: the commitment C = bG + rH
-    
-    We use a ring signature or OR-proof logic.
-    Prove knowledge of (b, r) such that C = bG + rH AND (b=0 OR b=1).
-    Equivalent to:
-    Proving knowledge of r s.t. C = rH  (if b=0)
-    OR
-    Proving knowledge of r s.t. C - G = rH (if b=1)
     """
-    # This is a standard "1-out-of-2" ZK proof (Cramer-Shoup-like or Sigma OR-proof).
-    # We want to prove we know r' such that C' = r'H, where C' is either C or C-G.
-    
-    # Let's use a simple simulation-based OR proof.
-    # We have two challenges c0, c1. We control one.
-    
-    # If b=0: We know r for C = rH. We simulate proof for C-G.
-    # If b=1: We know r for C-G = rH. We simulate proof for C.
-    
     u = random.randint(0, N-1)
     
     if b == 0:
@@ -46,8 +38,14 @@ def prove_bit(b, r, C):
         # Simulate 1: pick random z1, c1
         z1 = random.randint(0, N-1)
         c1 = random.randint(0, N-1)
+        
         # A1 = z1*H - c1*(C - G)
-        A1 = z1*H + (-c1) * (C + (-1)*G)
+        # In ecdsa, we avoid negative scalars if possible, use (N-x)%N
+        # -c1 * (C - G) = (N - c1) * (C + (N-1)*G)
+        neg_c1 = (N - c1) % N
+        neg_G = (N - 1) * G
+        term2 = neg_c1 * (C + neg_G)
+        A1 = z1*H + term2
         
         # Commit 0: A0 = u*H
         A0 = u*H
@@ -69,7 +67,8 @@ def prove_bit(b, r, C):
         z0 = random.randint(0, N-1)
         c0 = random.randint(0, N-1)
         # A0 = z0*H - c0*C
-        A0 = z0*H + (-c0) * C
+        neg_c0 = (N - c0) % N
+        A0 = z0*H + neg_c0 * C
         
         # Commit 1: A1 = u*H
         A1 = u*H
@@ -90,11 +89,14 @@ def verify_bit(C, proof):
     
     # Reconstruct A0
     # A0 = z0*H - c0*C
-    A0 = z0*H + (-c0) * C
+    neg_c0 = (N - c0) % N
+    A0 = z0*H + neg_c0 * C
     
     # Reconstruct A1
     # A1 = z1*H - c1*(C - G)
-    A1 = z1*H + (-c1) * (C + (-1)*G)
+    neg_c1 = (N - c1) % N
+    neg_G = (N - 1) * G
+    A1 = z1*H + neg_c1 * (C + neg_G)
     
     c = hash_points([C, A0, A1])
     
@@ -103,8 +105,6 @@ def verify_bit(C, proof):
 def generate_range_proof(bid, randomness, max_bid_bits=16):
     """
     Prove that 0 <= bid < 2^max_bid_bits.
-    Decompose bid into bits. Commit to each bit. Prove each is a bit.
-    Show sum of commitments matches total commitment.
     """
     # 1. Bit decomposition
     bits = []
@@ -128,32 +128,32 @@ def generate_range_proof(bid, randomness, max_bid_bits=16):
         bit_proofs.append(proof)
         
         # Accumulate randomness scaled by 2^i
-        # Total C should be sum(2^i * C_bit)
-        # Total C = sum(2^i * (b_i*G + r_i*H)) = sum(b_i*2^i)*G + sum(r_i*2^i)*H
-        # We need to adjust the final randomness to match the input 'randomness'
         total_r = (total_r + r * (1 << i)) % N
 
     # 3. Adjustment
-    # The sum of bit commitments is C_sum = bid*G + total_r*H
-    # The actual commitment is C = bid*G + randomness*H
-    # We need to prove that C and C_sum commit to the same value (bid).
-    # i.e., C - C_sum = (randomness - total_r) * H
-    # This is a knowledge of discrete log proof for (C - C_sum) base H.
-    
     delta_r = (randomness - total_r) % N
     
     # Compute C_sum
-    C_sum = Point(0, 0, True)
+    # Initialize with point at infinity? ecdsa doesn't expose it easily as a starting point for sum.
+    # We can start with the first term or handle 0 carefully.
+    # Or just sum them up.
+    # ecdsa points don't support `sum()` with start=0 easily if 0 is integer.
+    # We'll iterate.
+    
+    C_sum = None
     for i, C_bit in enumerate(bit_commitments):
-        C_sum = C_sum + (1 << i) * C_bit
-        
-    delta_C = commit_bid(bid, randomness) + (-1) * C_sum # Should be delta_r * H
+        term = (1 << i) * C_bit
+        if C_sum is None:
+            C_sum = term
+        else:
+            C_sum = C_sum + term
+            
+    # delta_C = C - C_sum
+    # delta_C = C + (-1)*C_sum
+    neg_C_sum = (N - 1) * C_sum
+    delta_C = commit_bid(bid, randomness) + neg_C_sum
     
     # Schnorr proof for delta_C = delta_r * H
-    # k = random
-    # R = k*H
-    # e = hash(delta_C, R)
-    # s = k + e * delta_r
     k = random.randint(0, N-1)
     R_point = k * H
     e = hash_points([delta_C, R_point])
@@ -181,17 +181,21 @@ def verify_range_proof(proof, commitment, max_bid_bits=16):
             return False
             
     # 2. Verify consistency
-    # Reconstruct C_sum
-    C_sum = Point(0, 0, True)
+    C_sum = None
     for i, C_bit in enumerate(bit_commitments):
-        C_sum = C_sum + (1 << i) * C_bit
-        
-    delta_C = commitment + (-1) * C_sum
+        term = (1 << i) * C_bit
+        if C_sum is None:
+            C_sum = term
+        else:
+            C_sum = C_sum + term
+            
+    neg_C_sum = (N - 1) * C_sum
+    delta_C = commitment + neg_C_sum
     
     e, s = consistency_proof
-    # s*H = k*H + e*delta_r*H = R + e*delta_C
     # R = s*H - e*delta_C
-    R_point = s * H + (-e) * delta_C
+    neg_e = (N - e) % N
+    R_point = s * H + neg_e * delta_C
     
     if hash_points([delta_C, R_point]) != e:
         return False
