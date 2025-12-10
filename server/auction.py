@@ -1,16 +1,22 @@
 from server.mpc import find_max_bid
 from shared.zkproofs import verify_range_proof
-from shared.commitments import verify_commitment, N
+from shared.commitments import verify_commitment, N, commit_bid
 
 # Large prime for secret sharing (must be larger than max bid sum, but here max bid is 50000)
 P = N 
 
 class AuctionServer:
-    def __init__(self):
+    def __init__(self, min_bid=0, max_bid=50000):
         self.bidders = []
         self.commitments = {}
         self.shares = {}
         self.verified_bidders = set()
+        self.min_bid = min_bid
+        self.max_bid = max_bid
+        
+        # Calculate max_bid_bits for the range [0, max_bid - min_bid]
+        range_size = max_bid - min_bid
+        self.max_bid_bits = max(1, range_size.bit_length())
 
     def register_bidder(self, bidder_id):
         if bidder_id not in self.bidders:
@@ -26,7 +32,24 @@ class AuctionServer:
             raise ValueError("Bidder not registered")
             
         print(f"Verifying proof for bidder {bidder_id}...")
-        if verify_range_proof(proof, commitment):
+        
+        # Adjust commitment to verify against 0-based range proof
+        # C_adjusted = C_original - commit(min_bid, 0)
+        # Because proof is for (bid - min_bid), and C_original is for bid.
+        # C_original = (bid)*G + r*H
+        # C_adjusted = (bid - min_bid)*G + r*H
+        
+        offset_commitment = commit_bid(self.min_bid, 0)
+        # Point subtraction: P - Q = P + (-Q)
+        # But ecdsa points allow direct subtraction if implemented, checking library...
+        # shared/commitments.py uses ecdsa SECP256k1.
+        # Typically P + (-Q).
+        # commitment is a Point. offset_commitment is a Point.
+        # Assuming Point supports neg and add.
+        
+        adjusted_commitment = commitment + (offset_commitment * -1)
+
+        if verify_range_proof(proof, adjusted_commitment, self.max_bid_bits):
             self.commitments[bidder_id] = commitment
             self.verified_bidders.add(bidder_id)
             print(f"Bidder {bidder_id} proof verified.")
