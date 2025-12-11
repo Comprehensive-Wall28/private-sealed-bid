@@ -14,8 +14,8 @@ def main():
     print("Enter 'done' at any prompt to finish bidding and calculate winner.")
     
     # Initialize Server with required range
-    MIN_BID = 100
-    MAX_BID = 1000
+    MIN_BID = 0
+    MAX_BID = 50000
     server = AuctionServer(min_bid=MIN_BID, max_bid=MAX_BID)
     
     while True:
