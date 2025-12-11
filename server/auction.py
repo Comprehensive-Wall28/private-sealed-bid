@@ -41,11 +41,8 @@ class AuctionServer:
         
         offset_commitment = commit_bid(self.min_bid, 0)
         # Point subtraction: P - Q = P + (-Q)
-        # But ecdsa points allow direct subtraction if implemented, checking library...
         # shared/commitments.py uses ecdsa SECP256k1.
-        # Typically P + (-Q).
         # commitment is a Point. offset_commitment is a Point.
-        # Assuming Point supports neg and add.
         
         adjusted_commitment = commitment + (offset_commitment * -1)
 
@@ -61,8 +58,6 @@ class AuctionServer:
     def receive_shares(self, bidder_id, shares):
         """
         Receive shares from a bidder.
-        In a real system, each server would receive one share.
-        Here, the AuctionServer acts as the coordinator/interface for the 3 servers.
         'shares' is a list [s1, s2, s3].
         """
         if bidder_id not in self.verified_bidders:

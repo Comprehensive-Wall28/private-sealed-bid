@@ -24,11 +24,10 @@ def register_bidder(bidder_id: str,
     Returns a dictionary with keys: 'id', 'commitment', 'proof', 'shares'
     Raises ValueError if the range proof verification fails.
     """
-    # randomness should be a scalar in the curve group order
     if randomness is None:
         randomness = secrets.randbelow(N)
 
-    # create commitment (expects commitments.commit_bid(bid, randomness) in project)
+    # create commitment
     commitment = commitments.commit_bid(bid, randomness)
 
     # The shared/zkproofs API expects `max_bid_bits` (proof bounds 0 <= b < 2^bits).
@@ -38,13 +37,6 @@ def register_bidder(bidder_id: str,
     
     # Check explicitly if bid is within range to avoid generating invalid proofs that will fail
     if not (min_bid <= bid <= Bmax):
-        # We can either let it generate a proof that fails, or fail early. 
-        # The prompt says "Invalid bids (outside range) are rejected immediately".
-        # Generating a proof for a negative number (bid - min_bid) or too large number would be tricky/fail.
-        # Actually (bid - min_bid) would be negative if bid < min_bid.
-        # But in a field, negative is large positive. So it might pass "0 <= x" check if x is interpreted as positive.
-        # BUT x < 2^10 implies checks smallness. -1 = N-1 which is huge, so it fails range proof.
-        # So range proof implicitly checks >= min_bid.
         pass
 
     # generate a non-interactive range proof for (bid - min_bid)
